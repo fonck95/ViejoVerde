@@ -19,7 +19,6 @@ export function Nav() {
         <WebGPUImage
           src="/logoViejoVerde.png"
           alt="Viejo Verde"
-          scale={2}
           className={styles.markImg}
           loading="eager"
         />

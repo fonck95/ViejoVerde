@@ -47,7 +47,8 @@ export function Hero() {
               <WebGPUImage
                 src="/logoViejoVerde.png"
                 alt="Viejo Verde · El Guardián del Roble"
-                scale={3}
+                resolutionBoost={1.25}
+                sharpness={0.4}
                 className={styles.bottleBottle}
                 loading="eager"
               />
