@@ -1,6 +1,6 @@
 import styles from './Hero.module.css'
-import { BottleGuardian } from '../svg/BottleGuardian'
 import { CornerSprig } from '../svg/Ornaments'
+import { WebGPUImage } from '../WebGPUImage/WebGPUImage'
 import { terrarium } from '../../data/terrarium'
 
 export function Hero() {
@@ -44,7 +44,13 @@ export function Hero() {
               <CornerSprig className={styles.cornerTR} />
               <CornerSprig className={styles.cornerBL} />
               <CornerSprig className={styles.cornerBR} />
-              <BottleGuardian className={styles.bottleBottle} ariaLabel="VV-001 · El Guardián del Roble" />
+              <WebGPUImage
+                src="/logoViejoVerde.png"
+                alt="Viejo Verde · El Guardián del Roble"
+                scale={3}
+                className={styles.bottleBottle}
+                loading="eager"
+              />
             </div>
           </div>
         </div>
