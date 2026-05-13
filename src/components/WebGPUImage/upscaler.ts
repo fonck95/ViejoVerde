@@ -1,16 +1,8 @@
-const SHADER = /* wgsl */ `
+const VS = /* wgsl */ `
 struct VOut {
   @builtin(position) pos: vec4<f32>,
   @location(0) uv: vec2<f32>,
 };
-
-struct Uniforms {
-  srcSize: vec2<f32>,
-};
-
-@group(0) @binding(0) var samp: sampler;
-@group(0) @binding(1) var tex: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> u: Uniforms;
 
 @vertex
 fn vs(@builtin(vertex_index) vi: u32) -> VOut {
@@ -31,24 +23,38 @@ fn vs(@builtin(vertex_index) vi: u32) -> VOut {
   out.uv = uvs[vi];
   return out;
 }
+`
 
-// Mitchell-Netravali B=1/3, C=1/3 -- a balanced bicubic kernel that keeps
-// edges sharp without introducing ringing artifacts typical of Lanczos.
-fn mitchell(x: f32) -> f32 {
-  let B: f32 = 1.0 / 3.0;
-  let C: f32 = 1.0 / 3.0;
+// Lanczos-3 windowed sinc: 6x6 taps in source-pixel space. Preserves edge
+// detail better than Mitchell-Netravali bicubic when enlarging logos with
+// hard boundaries. Sampling is performed on premultiplied-alpha data so
+// transparent neighbors do not bleed dark fringes onto opaque edges.
+const UPSCALE_FS = /* wgsl */ `
+struct VOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+struct Uniforms {
+  srcSize: vec2<f32>,
+};
+
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> u: Uniforms;
+
+const PI: f32 = 3.141592653589793;
+
+fn sinc(x: f32) -> f32 {
   let ax = abs(x);
-  if (ax < 1.0) {
-    return ((12.0 - 9.0 * B - 6.0 * C) * ax * ax * ax
-          + (-18.0 + 12.0 * B + 6.0 * C) * ax * ax
-          + (6.0 - 2.0 * B)) / 6.0;
-  } else if (ax < 2.0) {
-    return ((-B - 6.0 * C) * ax * ax * ax
-          + (6.0 * B + 30.0 * C) * ax * ax
-          + (-12.0 * B - 48.0 * C) * ax
-          + (8.0 * B + 24.0 * C)) / 6.0;
-  }
-  return 0.0;
+  if (ax < 1.0e-5) { return 1.0; }
+  let px = PI * x;
+  return sin(px) / px;
+}
+
+fn lanczos3(x: f32) -> f32 {
+  if (abs(x) >= 3.0) { return 0.0; }
+  return sinc(x) * sinc(x / 3.0);
 }
 
 @fragment
@@ -60,31 +66,111 @@ fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
   var accum = vec4<f32>(0.0, 0.0, 0.0, 0.0);
   var totalW = 0.0;
-  for (var dy: i32 = -1; dy <= 2; dy = dy + 1) {
-    for (var dx: i32 = -1; dx <= 2; dx = dx + 1) {
-      let w = mitchell(f32(dx) - f.x) * mitchell(f32(dy) - f.y);
-      let sx = baseI.x + f32(dx) + 0.5;
-      let sy = baseI.y + f32(dy) + 0.5;
-      let st = clamp(vec2<f32>(sx / size.x, sy / size.y), vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+  for (var dy: i32 = -2; dy <= 3; dy = dy + 1) {
+    let wy = lanczos3(f32(dy) - f.y);
+    for (var dx: i32 = -2; dx <= 3; dx = dx + 1) {
+      let wx = lanczos3(f32(dx) - f.x);
+      let w = wx * wy;
+      let sx = (baseI.x + f32(dx) + 0.5) / size.x;
+      let sy = (baseI.y + f32(dy) + 0.5) / size.y;
+      let st = clamp(vec2<f32>(sx, sy), vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
       accum = accum + textureSampleLevel(tex, samp, st, 0.0) * w;
       totalW = totalW + w;
     }
   }
-  return accum / totalW;
+  return accum / max(totalW, 1.0e-4);
 }
 `
 
+// Light unsharp mask in destination space to recover the micro-contrast that
+// any resampling kernel inevitably softens. The 5-tap cross blur is cheap and
+// avoids the ringing a wide Gaussian would produce on already-sharp edges.
+const SHARPEN_FS = /* wgsl */ `
+struct VOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+struct Uniforms {
+  texelSize: vec2<f32>,
+  amount: f32,
+  _pad: f32,
+};
+
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> u: Uniforms;
+
+@fragment
+fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+  let c  = textureSampleLevel(tex, samp, uv, 0.0);
+  let n  = textureSampleLevel(tex, samp, uv + vec2<f32>( 0.0, -u.texelSize.y), 0.0);
+  let s  = textureSampleLevel(tex, samp, uv + vec2<f32>( 0.0,  u.texelSize.y), 0.0);
+  let e  = textureSampleLevel(tex, samp, uv + vec2<f32>( u.texelSize.x,  0.0), 0.0);
+  let w  = textureSampleLevel(tex, samp, uv + vec2<f32>(-u.texelSize.x,  0.0), 0.0);
+  let blur = c * 0.5 + (n + s + e + w) * 0.125;
+  let sharp = c + (c - blur) * u.amount;
+  // Keep premultiplied invariant: RGB <= A and within [0,1].
+  let a = clamp(sharp.a, 0.0, 1.0);
+  let rgb = clamp(sharp.rgb, vec3<f32>(0.0), vec3<f32>(a));
+  return vec4<f32>(rgb, a);
+}
+`
+
+type Pipelines = {
+  device: GPUDevice
+  upscale: GPURenderPipeline
+  sharpen: GPURenderPipeline
+  canvasFormat: GPUTextureFormat
+  sampler: GPUSampler
+}
+
 let cachedDevice: Promise<GPUDevice | null> | null = null
+let cachedPipelines: Pipelines | null = null
 
 function getDevice(): Promise<GPUDevice | null> {
   if (cachedDevice) return cachedDevice
   cachedDevice = (async () => {
     if (!('gpu' in navigator) || !navigator.gpu) return null
-    const adapter = await navigator.gpu.requestAdapter()
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
     if (!adapter) return null
     return adapter.requestDevice()
   })().catch(() => null)
   return cachedDevice
+}
+
+async function getPipelines(canvasFormat: GPUTextureFormat): Promise<Pipelines | null> {
+  if (cachedPipelines && cachedPipelines.canvasFormat === canvasFormat) return cachedPipelines
+  const device = await getDevice()
+  if (!device) return null
+
+  const vsModule = device.createShaderModule({ code: VS })
+  const upscaleFs = device.createShaderModule({ code: UPSCALE_FS })
+  const sharpenFs = device.createShaderModule({ code: SHARPEN_FS })
+
+  const upscale = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: vsModule, entryPoint: 'vs' },
+    fragment: { module: upscaleFs, entryPoint: 'fs', targets: [{ format: 'rgba16float' }] },
+    primitive: { topology: 'triangle-strip' },
+  })
+
+  const sharpen = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module: vsModule, entryPoint: 'vs' },
+    fragment: { module: sharpenFs, entryPoint: 'fs', targets: [{ format: canvasFormat }] },
+    primitive: { topology: 'triangle-strip' },
+  })
+
+  const sampler = device.createSampler({
+    minFilter: 'linear',
+    magFilter: 'linear',
+    addressModeU: 'clamp-to-edge',
+    addressModeV: 'clamp-to-edge',
+  })
+
+  cachedPipelines = { device, upscale, sharpen, canvasFormat, sampler }
+  return cachedPipelines
 }
 
 export function isWebGPUAvailable(): boolean {
@@ -94,23 +180,33 @@ export function isWebGPUAvailable(): boolean {
 export async function upscaleToCanvas(
   canvas: HTMLCanvasElement,
   bitmap: ImageBitmap,
-  scale: number,
+  targetW: number,
+  targetH: number,
+  sharpness: number,
 ): Promise<void> {
-  const device = await getDevice()
-  if (!device) throw new Error('WebGPU device unavailable')
+  const canvasFormat = navigator.gpu.getPreferredCanvasFormat()
+  const pipelines = await getPipelines(canvasFormat)
+  if (!pipelines) throw new Error('WebGPU device unavailable')
+  const { device, upscale, sharpen, sampler } = pipelines
 
   const ctx = canvas.getContext('webgpu') as GPUCanvasContext | null
   if (!ctx) throw new Error('WebGPU canvas context unavailable')
 
-  const targetW = Math.max(1, Math.round(bitmap.width * scale))
-  const targetH = Math.max(1, Math.round(bitmap.height * scale))
-  canvas.width = targetW
-  canvas.height = targetH
+  const w = Math.max(1, Math.round(targetW))
+  const h = Math.max(1, Math.round(targetH))
+  if (canvas.width !== w) canvas.width = w
+  if (canvas.height !== h) canvas.height = h
 
-  const format = navigator.gpu.getPreferredCanvasFormat()
-  ctx.configure({ device, format, alphaMode: 'premultiplied' })
+  ctx.configure({
+    device,
+    format: canvasFormat,
+    alphaMode: 'premultiplied',
+    colorSpace: 'srgb',
+  })
 
-  const texture = device.createTexture({
+  // Upload source as premultiplied so the resample kernel weights opaque
+  // and transparent samples correctly without bleeding background black.
+  const sourceTexture = device.createTexture({
     size: [bitmap.width, bitmap.height],
     format: 'rgba8unorm',
     usage:
@@ -120,46 +216,72 @@ export async function upscaleToCanvas(
   })
   device.queue.copyExternalImageToTexture(
     { source: bitmap, flipY: false },
-    { texture, premultipliedAlpha: true },
+    { texture: sourceTexture, premultipliedAlpha: true, colorSpace: 'srgb' },
     [bitmap.width, bitmap.height],
   )
 
-  const sampler = device.createSampler({
-    minFilter: 'linear',
-    magFilter: 'linear',
-    addressModeU: 'clamp-to-edge',
-    addressModeV: 'clamp-to-edge',
+  const upscaled = device.createTexture({
+    size: [w, h],
+    format: 'rgba16float',
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
   })
 
-  const module = device.createShaderModule({ code: SHADER })
-  const pipeline = device.createRenderPipeline({
-    layout: 'auto',
-    vertex: { module, entryPoint: 'vs' },
-    fragment: { module, entryPoint: 'fs', targets: [{ format }] },
-    primitive: { topology: 'triangle-strip' },
-  })
-
-  const uniformBuffer = device.createBuffer({
+  const upscaleUniforms = device.createBuffer({
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
   device.queue.writeBuffer(
-    uniformBuffer,
+    upscaleUniforms,
     0,
     new Float32Array([bitmap.width, bitmap.height, 0, 0]),
   )
 
-  const bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
+  const upscaleBindGroup = device.createBindGroup({
+    layout: upscale.getBindGroupLayout(0),
     entries: [
       { binding: 0, resource: sampler },
-      { binding: 1, resource: texture.createView() },
-      { binding: 2, resource: { buffer: uniformBuffer } },
+      { binding: 1, resource: sourceTexture.createView() },
+      { binding: 2, resource: { buffer: upscaleUniforms } },
+    ],
+  })
+
+  const sharpenUniforms = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  })
+  device.queue.writeBuffer(
+    sharpenUniforms,
+    0,
+    new Float32Array([1 / w, 1 / h, Math.max(0, sharpness), 0]),
+  )
+
+  const sharpenBindGroup = device.createBindGroup({
+    layout: sharpen.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sampler },
+      { binding: 1, resource: upscaled.createView() },
+      { binding: 2, resource: { buffer: sharpenUniforms } },
     ],
   })
 
   const encoder = device.createCommandEncoder()
-  const pass = encoder.beginRenderPass({
+
+  const upPass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view: upscaled.createView(),
+        loadOp: 'clear',
+        storeOp: 'store',
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+      },
+    ],
+  })
+  upPass.setPipeline(upscale)
+  upPass.setBindGroup(0, upscaleBindGroup)
+  upPass.draw(4)
+  upPass.end()
+
+  const finalPass = encoder.beginRenderPass({
     colorAttachments: [
       {
         view: ctx.getCurrentTexture().createView(),
@@ -169,12 +291,15 @@ export async function upscaleToCanvas(
       },
     ],
   })
-  pass.setPipeline(pipeline)
-  pass.setBindGroup(0, bindGroup)
-  pass.draw(4)
-  pass.end()
+  finalPass.setPipeline(sharpen)
+  finalPass.setBindGroup(0, sharpenBindGroup)
+  finalPass.draw(4)
+  finalPass.end()
+
   device.queue.submit([encoder.finish()])
 
-  texture.destroy()
-  uniformBuffer.destroy()
+  sourceTexture.destroy()
+  upscaled.destroy()
+  upscaleUniforms.destroy()
+  sharpenUniforms.destroy()
 }
