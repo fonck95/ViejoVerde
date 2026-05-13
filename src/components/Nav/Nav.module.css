@@ -33,9 +33,11 @@
   align-items: center;
   gap: 12px;
 }
-.markSvg {
-  width: 26px;
-  height: 26px;
+.markImg {
+  width: 28px;
+  height: auto;
+  display: block;
+  object-fit: contain;
 }
 .markText {
   display: flex;
