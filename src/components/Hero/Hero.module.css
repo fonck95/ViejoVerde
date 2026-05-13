@@ -1,0 +1,191 @@
+.hero {
+  position: relative;
+  min-height: 100vh;
+  padding: clamp(80px, 12vh, 140px) 0 clamp(64px, 8vh, 96px);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 70% 50%, rgba(74, 90, 58, 0.18), transparent 70%),
+    radial-gradient(ellipse 60% 80% at 30% 100%, rgba(91, 70, 49, 0.16), transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: clamp(40px, 8vw, 96px);
+  align-items: center;
+}
+
+@media (max-width: 880px) {
+  .grid { grid-template-columns: 1fr; gap: 32px; }
+  .bottleWrap { order: -1; max-width: 360px; margin: 0 auto; }
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 3vw, 32px);
+}
+
+.eyebrowRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--vv-font-display);
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--vv-gold-soft);
+}
+.eyebrowRow span:nth-child(2) { color: var(--vv-text-muted); letter-spacing: 0.24em; }
+
+.code {
+  font-family: var(--vv-font-display);
+  font-size: clamp(72px, 13vw, 168px);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 0.9;
+  color: var(--vv-bone);
+  margin: 0;
+  position: relative;
+}
+
+.code::before {
+  content: '';
+  position: absolute;
+  left: -28px;
+  top: 14%;
+  bottom: 14%;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, var(--vv-gold) 50%, transparent);
+}
+
+.name {
+  font-family: var(--vv-font-serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: clamp(20px, 2.6vw, 30px);
+  color: var(--vv-sage);
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  font-family: var(--vv-font-serif);
+  font-style: italic;
+  font-size: clamp(16px, 1.5vw, 19px);
+  color: var(--vv-text-muted);
+  max-width: 42ch;
+  line-height: 1.5;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  padding-top: clamp(20px, 3vw, 32px);
+  border-top: 1px solid rgba(184, 146, 74, 0.25);
+}
+.metaItem {
+  padding: 16px 14px 4px 0;
+  border-right: 1px solid rgba(184, 146, 74, 0.15);
+}
+.metaItem:last-child { border-right: 0; }
+.metaLabel {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--vv-text-muted);
+  margin-bottom: 6px;
+}
+.metaValue {
+  font-family: var(--vv-font-serif);
+  font-size: clamp(14px, 1.4vw, 17px);
+  color: var(--vv-bone);
+}
+
+.bottleWrap {
+  position: relative;
+  isolation: isolate;
+}
+
+.bottleFrame {
+  position: relative;
+  padding: 12px;
+  display: flex;
+  justify-content: center;
+}
+.bottleFrame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 55% at 50% 50%, rgba(210, 171, 99, 0.12), transparent 70%);
+  z-index: -1;
+}
+
+.bottleBottle {
+  width: 100%;
+  max-width: 460px;
+  filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.7));
+  animation: floaty 9s ease-in-out infinite;
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-10px) rotate(0.4deg); }
+}
+
+/* esquinas decorativas */
+.cornerTL, .cornerTR, .cornerBL, .cornerBR {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.cornerTL { top: -10px; left: -10px; }
+.cornerTR { top: -10px; right: -10px; transform: scaleX(-1); }
+.cornerBL { bottom: -10px; left: -10px; transform: scaleY(-1); }
+.cornerBR { bottom: -10px; right: -10px; transform: scale(-1, -1); }
+
+.scrollHint {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--vv-font-display);
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--vv-text-muted);
+  z-index: 3;
+}
+.scrollLine {
+  width: 1px;
+  height: 38px;
+  background: linear-gradient(to bottom, transparent, var(--vv-gold), transparent);
+  animation: trickle 2.6s ease-in-out infinite;
+}
+@keyframes trickle {
+  0%   { transform: scaleY(0.2); transform-origin: top; opacity: 0.4; }
+  50%  { transform: scaleY(1);   transform-origin: top; opacity: 0.9; }
+  51%  { transform: scaleY(1);   transform-origin: bottom; opacity: 0.9; }
+  100% { transform: scaleY(0.2); transform-origin: bottom; opacity: 0.2; }
+}

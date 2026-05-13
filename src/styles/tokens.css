@@ -1,0 +1,59 @@
+/* Viejo Verde - design tokens */
+:root {
+  /* Paleta base (del manual de marca) */
+  --vv-forest: #283126;
+  --vv-moss: #4a5a3a;
+  --vv-sage: #7c7a52;
+  --vv-earth: #5b4631;
+  --vv-cream: #cfc6b0;
+
+  /* Escala extendida derivada */
+  --vv-night: #0c1208;
+  --vv-deep: #131a0e;
+  --vv-bark: #1d2614;
+  --vv-fern: #3d4d2f;
+  --vv-lichen: #6c7d4f;
+  --vv-clay: #7a5d3c;
+  --vv-paper: #e8dfc8;
+  --vv-bone: #f3ebd3;
+  --vv-ash: #a39d85;
+  --vv-gold: #b8924a;
+  --vv-gold-soft: #d2ab63;
+  --vv-rust: #8a4a2a;
+
+  /* Texto */
+  --vv-text: #d4cdb8;
+  --vv-text-muted: #8d8770;
+  --vv-text-strong: var(--vv-bone);
+
+  /* Tipografía */
+  --vv-font-display: 'Cinzel', 'Cormorant Garamond', 'Trajan Pro', serif;
+  --vv-font-serif: 'Cormorant Garamond', 'Lora', Georgia, serif;
+  --vv-font-body: 'Lora', 'Source Serif Pro', Georgia, serif;
+
+  /* Espaciado */
+  --vv-space-1: 4px;
+  --vv-space-2: 8px;
+  --vv-space-3: 12px;
+  --vv-space-4: 16px;
+  --vv-space-5: 24px;
+  --vv-space-6: 32px;
+  --vv-space-7: 48px;
+  --vv-space-8: 64px;
+  --vv-space-9: 96px;
+  --vv-space-10: 128px;
+
+  /* Radios y bordes */
+  --vv-radius-xs: 2px;
+  --vv-radius-sm: 4px;
+  --vv-radius-md: 8px;
+  --vv-radius-lg: 16px;
+
+  /* Sombras orgánicas */
+  --vv-shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --vv-shadow-deep: 0 40px 80px rgba(0, 0, 0, 0.6);
+  --vv-shadow-inset: inset 0 0 60px rgba(0, 0, 0, 0.55);
+
+  /* Animación */
+  --vv-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
